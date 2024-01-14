@@ -33,23 +33,19 @@ async def process_markets_async(exchange, data, since):
         try:
             ohlcv = await exchange.fetch_ohlcv(market, '1m', since=since)
             # Process OHLCV data
-            previous_volume = -1  # Start with an invalid volume
             for candle in ohlcv:
-                open_price = candle[1]  # Open price
-                close_price = candle[4]  # Close price
-                volume = candle[5]  # Volume
+                open_price = candle[1]  # Open price is the second item in the candle list
+                high_price = candle[2]
+                close_price = candle[4]  # Close price is the fifth item in the candle list
                 
                 # Check if the open price is less than 1, the close price is higher than the open, 
                 # and the volume changed from less than 'prev_volume' to more than 'next_volume'
-                if (open_price < 1 and close_price > (open_price * 1.5) and
-                    previous_volume == int(data['prev_volume']) and 
-                    volume >= int(data['next_volume'])):
+                if high_price > (open_price * 1.5):
                     eligible_markets.append(market)
-                    print(f"Eligible market: {market} with open price {open_price}, close price {close_price}, and volume change from {previous_volume} to {volume}")
+                    print(f"Eligible market: {market} with open price {open_price}, high price {close_price}")
                     break  # Stop checking further candles since condition is met
-                previous_volume = volume
             
-            # await asyncio.sleep(0.2)  # Corrected to await the sleep call
+            await asyncio.sleep(0.2)  # Corrected to await the sleep call
         except Exception as e:
             print(f"Error for market {market}: {e}")
             error_markets.append(market)
@@ -70,21 +66,17 @@ def process_markets_sync(exchange, data, since):
         try:
             ohlcv = exchange.fetch_ohlcv(market, '1m', since=since)
             # Process ohlcv data
-            previous_volume = -1  # Start with an invalid volume to ensure the first candle is checked properly
             for candle in ohlcv:
                 open_price = candle[1]  # Open price is the second item in the candle list
+                high_price = candle[2]
                 close_price = candle[4]  # Close price is the fifth item in the candle list
-                volume = candle[5]  # Volume is the sixth item in the candle list
                 
                 # Check if the open price is less than 1, the close price is higher than the open, 
                 # and the volume changed from less than 'prev_volume' to more than 'next_volume'
-                if (open_price < 0.1 and close_price > (open_price * 1.5) and
-                    previous_volume == int(data['prev_volume']) and 
-                    volume >= int(data['next_volume'])):
+                if high_price > (open_price * 1.5):
                     eligible_markets.append(market)
-                    print(f"Eligible market: {market} with open price {open_price}, close price {close_price}, and volume change from {previous_volume} to {volume}")
+                    print(f"Eligible market: {market} with open price {open_price}, high price {close_price}")
                     break  # Stop checking further candles since condition is met
-                previous_volume = volume
             
             time.sleep(0.2)
         except Exception as e:
@@ -114,6 +106,7 @@ def attempt_connection(host, port):
             print(f"An error occurred: {e}")
 
 def send_response(client, response_data):    # Convert the response to JSON and encode it
+    # Convert the response to JSON and encode it
     response = json.dumps(response_data).encode('utf-8')
 
     # Send the length of the response first
@@ -122,6 +115,8 @@ def send_response(client, response_data):    # Convert the response to JSON and 
 
     # Send the actual response data
     client.sendall(response)
+    print(f"[Debug] Sent response: {response_data}")  # Debugging line
+
 
 async def async_attempt_connection(host, port):
     reader, writer = await asyncio.open_connection(host, port)
