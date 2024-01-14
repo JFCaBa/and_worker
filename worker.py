@@ -29,21 +29,17 @@ def process_markets(data):
         try:
             ohlcv = exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
             
-            previous_volume = -1  # Start with an invalid volume to ensure the first candle is checked properly
             for candle in ohlcv:
                 open_price = candle[1]  # Open price is the second item in the candle list
+                high_price = candle[2]
                 close_price = candle[4]  # Close price is the fifth item in the candle list
-                volume = candle[5]  # Volume is the sixth item in the candle list
                 
                 # Check if the open price is less than 1, the close price is higher than the open, 
                 # and the volume changed from less than 'prev_volume' to more than 'next_volume'
-                if (open_price < 0.1 and close_price > (open_price * 1.5) and
-                    previous_volume == int(data['prev_volume']) and 
-                    volume >= int(data['next_volume'])):
+                if high_price > (open_price * 1.5):
                     eligible_markets.append(market)
-                    print(f"Eligible market: {market} with open price {open_price}, close price {close_price}, and volume change from {previous_volume} to {volume}")
+                    print(f"Eligible market: {market} with open price {open_price}, high price {close_price}")
                     break  # Stop checking further candles since condition is met
-                previous_volume = volume
             
             time.sleep(0.2)
 
