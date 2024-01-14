@@ -17,10 +17,12 @@ async def process_markets(data):
 
     if hasattr(ccxtpro, exchange_id):
         # Asynchronous processing with CCXT Pro
+        print('[DEBUG]: Exchange using async mode')
         exchange = getattr(ccxtpro, exchange_id)({'enableRateLimit': True})
         return await process_markets_async(exchange, data, parsed_time_ago)
     else:
         # Synchronous processing with standard CCXT
+        print('[DEBUG]: Exchange using sync mode')
         exchange = getattr(ccxt, exchange_id)({'enableRateLimit': True})
         return process_markets_sync(exchange, data, parsed_time_ago)
 
