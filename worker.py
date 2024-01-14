@@ -186,10 +186,10 @@ async def connect_to_server(host, port):
                 await writer.wait_closed()
                 reader, writer = None, None
             continue
-        finally:
-            if writer is not None:
-                writer.close()
-                await writer.wait_closed()
+        # finally:
+        #     if writer is not None:
+        #         writer.close()
+        #         await writer.wait_closed()
 
 
 def handle_error(client, markets):
@@ -199,8 +199,8 @@ def handle_error(client, markets):
     # Send the error response back to the server
     send_response(client, error_response)
 
-    client.close()
-    sys.exit(0)
+    # client.close()
+    # sys.exit(0)
 
 if __name__ == "__main__":
     asyncio.run(connect_to_server('onedayvpn.com', 5001))
