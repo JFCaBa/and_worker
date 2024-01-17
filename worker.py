@@ -2,20 +2,18 @@ import socket
 import json
 import sys
 import ccxt
-import datetime
 import time
 import logging
+import datetime
 
 all_markets = []
-
+client = None
 
 def process_markets(data):
 
-    print(f"Processing data for exchange {data['exchange_id']}")
-
     # Initialize the exchange
     exchange_class = getattr(ccxt, data['exchange_id'])
-    exchange = exchange_class({'enableRateLimit': False})
+    exchange = exchange_class({'enableRateLimit': True})
 
     eligible_markets = []  # Initialize the list
     error_markets = []     # Initialize the list
@@ -32,41 +30,55 @@ def process_markets(data):
             ohlcv = exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
             
             for candle in ohlcv:
+                # timestamp = candle[0]
                 open_price = candle[1]  # Open price is the second item in the candle list
-                high_price = candle[2]
-                close_price = candle[4]  # Close price is the fifth item in the candle list
+                high_price = candle[2]  # High price is the third item in the candle list
+                # close_price = candle[4]  # Close price is the fifth item in the candle list
+                volume = candle[5]  # Volume is the sixth item in the candle list
                 
-                # Check if the open price is less than 1, the close price is higher than the open, 
+                # Check if the high price is 1.5 times more than the open price, 
                 # and the volume changed from less than 'prev_volume' to more than 'next_volume'
-                if high_price > (open_price * 1.5):
+                if high_price > (open_price * 1.5) and volume > data['next_volume']:
                     eligible_markets.append(market)
-                    print(f"Eligible market: {market} with open price {open_price}, high price {close_price}")
-                    break  # Stop checking further candles since condition is met
-            
-            time.sleep(0.2)
+                    print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
+                    
+                # time.sleep(0.2)
 
         except ccxt.RateLimitExceeded as e:
-            print(f"Rate limit exceeded: {e}")
+            print(f"\nRate limit exceeded: {e}\n")
+            print('Sleeping for 10 seconds\n')
             # Use rateLimit info from exchange to wait the appropriate amount of time
             time.sleep(10)
+            continue
         except Exception as e:
-            print(f"Error for market {market}: {e}")
+            print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
+            continue
 
         counter += 1
-        print(f"\rAnalysed: {market}, left: {len(data['markets']) - counter}               ", end='')
+
+        # Print your log with the time prefix
+        print(f"\r{parsed_time_ago} Analysed: {market}, left: {len(data['markets']) - counter}               ", end='')
 
 
     return {'eligible_markets': eligible_markets, 'error_markets': error_markets}
 
 
 def attempt_connection(host, port):
+    global client
     while True:
         try:
-            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if client is None:
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.connect((host, port))
             print(f"Connected to {host}:{port}                                            ")
             return client  # Successfully connected
+        except KeyboardInterrupt:
+            print("\nInterrupted. Closing connection...\n")
+            if client:
+                client.close()
+            client = None  # Reset client to trigger reconnection
+            sys.exit(0)
         except ConnectionRefusedError:
             print(f"Connection to {host}:{port} failed. Retrying in 10 seconds...")
             time.sleep(10)  # Wait for 10 seconds before retrying
@@ -118,30 +130,34 @@ def connect_to_server(host, port):
             # Send response back to the server
             send_response(client, result)
         except KeyboardInterrupt:
-            print("\nInterrupted. Closing connection...")
+            print("\nInterrupted. Closing connection...\n")
             if client:
-                client.close()
-            client = None  # Reset client to trigger reconnection
+                try:
+                    client.close()
+                    print("Closed client connection")
+                except Exception as e:
+                    print(f"Error closing client connection: {e}")
             sys.exit(0)
 
         except (ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError):
-            print("Connection lost. Attempting to reconnect...")
+            print("\nConnection lost. Attempting to reconnect...\n")
             if client:
-                client.close()
-            client = None  # Reset client to trigger reconnection
+                try:
+                    client.close()
+                    print("Closed client connection")
+                except Exception as e:
+                    print(f"Error closing client connection: {e}")
             continue
 
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"\nAn error occurred: {e}\n")
             if client:
-                client.close()
-            client = None  # Reset client to trigger reconnection
+                try:
+                    client.close()
+                    print("Closed client connection")
+                except Exception as e:
+                    print(f"Error closing client connection: {e}")
             continue
-
-        finally:
-            if client:
-                client.close()
-                client = None
 
     # if client:
     #     client.close()
