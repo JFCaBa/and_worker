@@ -3,7 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# My files to be excluded
 .env
+venv/*
 
 # User-specific files
 *.rsuser
