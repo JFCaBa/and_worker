@@ -10,7 +10,7 @@ all_markets = []
 client = None
 
 def process_markets(data):
-
+    global client
     # Initialize the exchange
     exchange_class = getattr(ccxt, data['exchange_id'])
     exchange = exchange_class({'enableRateLimit': True})
@@ -54,6 +54,12 @@ def process_markets(data):
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
             continue
+        except KeyboardInterrupt:
+            print("\nInterrupted. Closing connection...\n")
+            if client:
+                client.close()
+            client = None  
+            sys.exit(0)
 
         counter += 1
 
@@ -82,9 +88,16 @@ def attempt_connection(host, port):
         except ConnectionRefusedError:
             print(f"Connection to {host}:{port} failed. Retrying in 10 seconds...")
             time.sleep(10)  # Wait for 10 seconds before retrying
+            if client:
+                client.close()
+            client = None  # Reset client to trigger reconnection
         except Exception as e:
             print(f"An error occurred: {e}")
             time.sleep(10)  # Retry after a short delay
+            if client:
+                client.close()
+            client = None  # Reset client to trigger reconnection
+
 
 def send_response(client, response_data):    # Convert the response to JSON and encode it
     response = json.dumps(response_data).encode('utf-8')
