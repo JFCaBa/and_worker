@@ -4,8 +4,10 @@ import sys
 import ccxt
 import datetime
 import time
+import logging
 
 all_markets = []
+
 
 def process_markets(data):
 
@@ -52,7 +54,7 @@ def process_markets(data):
             error_markets.append(market)
 
         counter += 1
-        print(f"Analysed: {market}, left: {len(data['markets']) - counter}")
+        print(f"\rAnalysed: {market}, left: {len(data['markets']) - counter}               ", end='')
 
 
     return {'eligible_markets': eligible_markets, 'error_markets': error_markets}
@@ -63,7 +65,7 @@ def attempt_connection(host, port):
         try:
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.connect((host, port))
-            print(f"Connected to {host}:{port}")
+            print(f"Connected to {host}:{port}                                            ")
             return client  # Successfully connected
         except ConnectionRefusedError:
             print(f"Connection to {host}:{port} failed. Retrying in 10 seconds...")
@@ -106,7 +108,7 @@ def connect_to_server(host, port):
                 data += part
                 data_received += len(part)
 
-            print("Raw data received:", data)  # Inspect raw data
+            # print("Raw data received:", data)  # Inspect raw data
 
             segment = json.loads(data)
 
@@ -117,7 +119,10 @@ def connect_to_server(host, port):
             send_response(client, result)
         except KeyboardInterrupt:
             print("\nInterrupted. Closing connection...")
-            break
+            if client:
+                client.close()
+            client = None  # Reset client to trigger reconnection
+            sys.exit(0)
 
         except (ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError):
             print("Connection lost. Attempting to reconnect...")
@@ -138,9 +143,9 @@ def connect_to_server(host, port):
                 client.close()
                 client = None
 
-    if client:
-        client.close()
-    sys.exit(0)
+    # if client:
+    #     client.close()
+    # sys.exit(0)
 
     
 def handle_error(client, markets):
@@ -154,6 +159,7 @@ def handle_error(client, markets):
     sys.exit(0)
 
 
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-# Connect to the server and start processing
-connect_to_server('54.38.215.128', 5001)
+    connect_to_server('onedayvpn.com', 5001)
