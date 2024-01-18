@@ -35,10 +35,9 @@ async def process_markets(data):
     time_ago = datetime.datetime.utcnow() - datetime.timedelta(minutes=time_to_check_back)
     parsed_time_ago = exchange.parse8601(time_ago.isoformat())
 
-    count = 0
     for market in data['markets']:
         try:
-            print(f"\rProcessing {market}, left: {len(data['markets']) - count}                    ", end='')
+            print(f"\rProcessing {market}                   ", end='')
             ohlcv = await exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
             await exchange.close()
             
@@ -54,9 +53,7 @@ async def process_markets(data):
                 if high_price > (open_price * 1.5) and volume > data['next_volume']:
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
-            
-            count += 1
-        
+                    
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
