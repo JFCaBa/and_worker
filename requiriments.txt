@@ -1,2 +1,4 @@
 ccxt
-logging
+ccxtpro
+python-dotenv
+websockets
