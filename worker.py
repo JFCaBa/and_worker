@@ -10,6 +10,19 @@ from dotenv import load_dotenv
 exchange = None
 ws = None
 
+HEARTBEAT_INTERVAL = 30  # seconds
+
+async def send_heartbeat(websocket):
+    while True:
+        try:
+            heartbeat_payload = {'type': 'heartbeat'}
+            await websocket.send(json.dumps(heartbeat_payload))
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+        except Exception as e:
+            logging.error(f'Error sending heartbeat: {e}')
+            break  # Exit the loop if the connection is closed or an error occurs
+
+
 async def process_markets(data):
     global exchange
 
@@ -43,16 +56,11 @@ async def process_markets(data):
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
             
             count += 1
-
-            # Send a heartbeat 
-            heartbeat_payload = {'type': 'heartbeat'}
-            await ws.send(json.dumps(heartbeat_payload))
         
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
             await asyncio.sleep(10) 
-            
 
     await exchange.close()
 
@@ -66,10 +74,14 @@ async def handle_data(websocket):
     global ws
     ws = websocket
     try:
-        message = await websocket.recv()
-        data = json.loads(message)
-        result = await process_markets(data)
-        await send_response(websocket, result)
+        # Start sending heartbeats in a separate task
+        asyncio.create_task(send_heartbeat(websocket))
+        
+        while True:  # Keep listening for data
+            message = await websocket.recv()
+            data = json.loads(message)
+            result = await process_markets(data)
+            await send_response(websocket, result)
 
     except websockets.ConnectionClosed as e:
         logging.error(f"Connection closed: {e}")
@@ -85,11 +97,12 @@ async def connect_to_server(uri):
                 logging.info(f"Connected to {uri}")
                 while True:
                     await handle_data(websocket)
-        except websockets.ConnectionClosed:
-            logging.info("Connection closed, attempting to reconnect...")
+        except websockets.ConnectionClosed as e:
+            logging.error(f"Connection closed: {e}, attempting to reconnect...")
         except Exception as e:
-            logging.error(f"\nAn error occurred: {e}\n")
-        await asyncio.sleep(10)  # Wait before retrying
+            logging.error(f"An error occurred: {e}")
+        await asyncio.sleep(10)  # Wait a bit before retrying to avoid hammering the server
+
 
 async def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
