@@ -1,33 +1,31 @@
-import socket
 import json
-import sys
-import ccxt
-import time
+import ccxt.pro as ccxt
 import logging
 import datetime
+import asyncio
+import websockets
+import os
+from dotenv import load_dotenv
 
-all_markets = []
-client = None
+exchange = None
+async def process_markets(data):
+    global exchange
 
-def process_markets(data):
-    global client
-    # Initialize the exchange
     exchange_class = getattr(ccxt, data['exchange_id'])
     exchange = exchange_class({'enableRateLimit': True})
+    eligible_markets = []
+    error_markets = []
 
-    eligible_markets = []  # Initialize the list
-    error_markets = []     # Initialize the list
-    counter = 0
-
-    # Calculate the time based on time_to_check_back
-    # Convert time_to_check_back from string to integer
     time_to_check_back = int(data['time_to_check_back'])
     time_ago = datetime.datetime.utcnow() - datetime.timedelta(minutes=time_to_check_back)
     parsed_time_ago = exchange.parse8601(time_ago.isoformat())
 
+    count = 0
     for market in data['markets']:
         try:
-            ohlcv = exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
+            print(f"\rProcessing {market}, left: {len(data['markets']) - count}                    ", end='')
+            ohlcv = await exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
+            await exchange.close()
             
             for candle in ohlcv:
                 # timestamp = candle[0]
@@ -41,171 +39,65 @@ def process_markets(data):
                 if high_price > (open_price * 1.5) and volume > data['next_volume']:
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
-                    
-                # time.sleep(0.2)
-
-        except ccxt.RateLimitExceeded as e:
-            print(f"\nRate limit exceeded: {e}\n")
-            print('Sleeping for 10 seconds\n')
-            # Use rateLimit info from exchange to wait the appropriate amount of time
-            time.sleep(10)
-            continue
+            
+            count += 1
+        
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
-            continue
-        except KeyboardInterrupt:
-            print("\nInterrupted. Closing connection...\n")
-            if client:
-                client.close()
-            client = None  
-            sys.exit(0)
 
-        counter += 1
-
-        # Print your log with the time prefix
-        print(f"\r{parsed_time_ago} Analysed: {market}, left: {len(data['markets']) - counter}               ", end='')
-
+    await exchange.close()
 
     return {'eligible_markets': eligible_markets, 'error_markets': error_markets}
 
+async def send_response(websocket, response_data):
+    response = json.dumps(response_data)
+    await websocket.send(response)
 
-def attempt_connection(host, port):
-    global client
-    while True:
-        try:
-            if client is None:
-                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client.connect((host, port))
-            print(f"Connected to {host}:{port}                                            ")
-            return client  # Successfully connected
-        except KeyboardInterrupt:
-            print("\nInterrupted. Closing connection...\n")
-            if client:
-                client.close()
-            client = None  # Reset client to trigger reconnection
-            sys.exit(0)
-        except ConnectionRefusedError:
-            print(f"Connection to {host}:{port} failed. Retrying in 10 seconds...")
-            time.sleep(10)  # Wait for 10 seconds before retrying
-            if client:
-                client.close()
-            client = None  # Reset client to trigger reconnection
-        except Exception as e:
-            logging.error(f"An error occurred: {e}")
-            time.sleep(10)  # Retry after a short delay
-            if client:
-                client.shutdown(socket.SHUT_RDWR)
-                client.close()
-            client = None  # Reset client to trigger reconnection
-            logging.info("Retrying now...")
-
-
-def send_response(client, response_data):    # Convert the response to JSON and encode it
-    response = json.dumps(response_data).encode('utf-8')
-
-    # Send the length of the response first
-    response_length = str(len(response)).encode('utf-8')
-    client.sendall(response_length + b'\n')
-
-    # Send the actual response data
-    client.sendall(response)
-
-def close_client_socket(client):
-    """Safely close the client socket."""
-    if client:
-        try:
-            # Try to shutdown the socket to ensure no further sends/receives
-            try:
-                client.shutdown(socket.SHUT_RDWR)
-            except Exception as e:
-                print(f"Error shutting down client connection: {e}")
-            # Close the socket
-            client.close()
-            print("Closed client connection")
-        except Exception as e:
-            print(f"Error closing client connection: {e}")
-
-def handle_data(client):
-    """Handle receiving, processing, and sending data for the given client."""
+async def handle_data(websocket):
     try:
-        # First receive the length of the data up to the newline
-        data_length_str = ''
-        char = ''
-        
-        while char != '\n':
-            char = client.recv(1).decode('utf-8')
-            if char != '\n':
-                data_length_str += char
+        message = await websocket.recv()
+        data = json.loads(message)
+        result = await process_markets(data)
+        await send_response(websocket, result)
 
-        data_length = int(data_length_str)
-        data_received = 0
-        data = ''
+    except websockets.ConnectionClosed as e:
+        logging.error(f"Connection closed: {e}")
+        raise  # Re-raise to handle reconnection outside
 
-        # Keep receiving data until the full length is received
-        while data_received < data_length:
-            part = client.recv(1024).decode('utf-8')
-            data += part
-            data_received += len(part)
-
-        # Process the data
-        segment = json.loads(data)
-        result = process_markets(segment)
-
-        # Send response back to the server
-        send_response(client, result)
     except Exception as e:
         print(f"An error occurred while handling data: {e}")
 
-def connect_to_server(host, port):
-    global client
+async def connect_to_server(uri):
     while True:
         try:
-            if client is None:
-                client = attempt_connection(host, port)
-           
-            handle_data(client)
-
-        except KeyboardInterrupt:
-            print("\nInterrupted. Closing connection...")
-            close_client_socket(client)
-            sys.exit(0)
-
-        except (ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError):
-            print("\nConnection lost. Attempting to reconnect...")
-            close_client_socket(client)
-            client = None  # Reset client to trigger reconnection
-            time.sleep(5)  # Wait a bit before retrying
-            continue
-
-        except socket.error as e:
-            print(f"Socket error occurred: {e}")
-            close_client_socket(client)
-            client = None
-            continue
-
+            async with websockets.connect(uri) as websocket:
+                logging.info(f"Connected to {uri}")
+                while True:
+                    await handle_data(websocket)
+        except websockets.ConnectionClosed:
+            logging.info("Connection closed, attempting to reconnect...")
         except Exception as e:
-            print(f"\nAn error occurred: {e}\n")
-            close_client_socket(client)
-            continue
+            logging.error(f"\nAn error occurred: {e}\n")
+        await asyncio.sleep(10)  # Wait before retrying
 
-        finally:
-            # Ensure the client connection is closed
-            close_client_socket(client)
-
-    
-def handle_error(client, markets):
-    # Prepare an error response
-    error_response = {'eligible_markets': [], 'error_markets': markets}
-    
-    # Send the error response back to the server
-    send_response(client, error_response)
-
-    client.close()
-    sys.exit(0)
-
-
-if __name__ == '__main__':
+async def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    load_dotenv()
+    uri = os.getenv('URI') 
+    await connect_to_server(uri)
 
-    connect_to_server('onedayvpn.com', 5001)
+async def cleanup():
+    global exchange
+    if exchange:
+        await exchange.close()
+        logging.info("Exchange closed.")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("\nWorker stopped manually\n")
+        asyncio.run(cleanup())
+    except Exception as e:
+        logging.error(f"\nError in worker: {e}\n")
