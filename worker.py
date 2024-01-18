@@ -8,6 +8,8 @@ import os
 from dotenv import load_dotenv
 
 exchange = None
+ws = None
+
 async def process_markets(data):
     global exchange
 
@@ -41,6 +43,10 @@ async def process_markets(data):
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
             
             count += 1
+
+            # Send a heartbeat 
+            heartbeat_payload = {'type': 'heartbeat'}
+            await ws.send(json.dumps(heartbeat_payload))
         
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
@@ -57,6 +63,8 @@ async def send_response(websocket, response_data):
     await websocket.send(response)
 
 async def handle_data(websocket):
+    global ws
+    ws = websocket
     try:
         message = await websocket.recv()
         data = json.loads(message)
