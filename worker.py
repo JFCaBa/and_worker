@@ -92,11 +92,13 @@ def attempt_connection(host, port):
                 client.close()
             client = None  # Reset client to trigger reconnection
         except Exception as e:
-            print(f"An error occurred: {e}")
+            logging.error(f"An error occurred: {e}")
             time.sleep(10)  # Retry after a short delay
             if client:
+                client.shutdown(socket.SHUT_RDWR)
                 client.close()
             client = None  # Reset client to trigger reconnection
+            logging.info("Retrying now...")
 
 
 def send_response(client, response_data):    # Convert the response to JSON and encode it
@@ -109,72 +111,87 @@ def send_response(client, response_data):    # Convert the response to JSON and 
     # Send the actual response data
     client.sendall(response)
 
+def close_client_socket(client):
+    """Safely close the client socket."""
+    if client:
+        try:
+            # Try to shutdown the socket to ensure no further sends/receives
+            try:
+                client.shutdown(socket.SHUT_RDWR)
+            except Exception as e:
+                print(f"Error shutting down client connection: {e}")
+            # Close the socket
+            client.close()
+            print("Closed client connection")
+        except Exception as e:
+            print(f"Error closing client connection: {e}")
+
+def handle_data(client):
+    """Handle receiving, processing, and sending data for the given client."""
+    try:
+        # First receive the length of the data up to the newline
+        data_length_str = ''
+        char = ''
+        
+        while char != '\n':
+            char = client.recv(1).decode('utf-8')
+            if char != '\n':
+                data_length_str += char
+
+        data_length = int(data_length_str)
+        data_received = 0
+        data = ''
+
+        # Keep receiving data until the full length is received
+        while data_received < data_length:
+            part = client.recv(1024).decode('utf-8')
+            data += part
+            data_received += len(part)
+
+        # Process the data
+        segment = json.loads(data)
+        result = process_markets(segment)
+
+        # Send response back to the server
+        send_response(client, result)
+    except Exception as e:
+        print(f"An error occurred while handling data: {e}")
+
 def connect_to_server(host, port):
-    client = None
+    global client
     while True:
         try:
             if client is None:
                 client = attempt_connection(host, port)
-            # First receive the length of the data up to the newline
-            data_length_str = ''
-            char = ''
-            while char != '\n':
-                char = client.recv(1).decode('utf-8')
-                if char != '\n':
-                    data_length_str += char
+           
+            handle_data(client)
 
-            data_length = int(data_length_str)
-            data_received = 0
-            data = ''
-
-            # Keep receiving data until the full length is received
-            while data_received < data_length:
-                part = client.recv(1024).decode('utf-8')
-                data += part
-                data_received += len(part)
-
-            # print("Raw data received:", data)  # Inspect raw data
-
-            segment = json.loads(data)
-
-            # Process the segment
-            result = process_markets(segment)
-
-            # Send response back to the server
-            send_response(client, result)
         except KeyboardInterrupt:
-            print("\nInterrupted. Closing connection...\n")
-            if client:
-                try:
-                    client.close()
-                    print("Closed client connection")
-                except Exception as e:
-                    print(f"Error closing client connection: {e}")
+            print("\nInterrupted. Closing connection...")
+            close_client_socket(client)
             sys.exit(0)
 
         except (ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError):
-            print("\nConnection lost. Attempting to reconnect...\n")
-            if client:
-                try:
-                    client.close()
-                    print("Closed client connection")
-                except Exception as e:
-                    print(f"Error closing client connection: {e}")
+            print("\nConnection lost. Attempting to reconnect...")
+            close_client_socket(client)
+            client = None  # Reset client to trigger reconnection
+            time.sleep(5)  # Wait a bit before retrying
+            continue
+
+        except socket.error as e:
+            print(f"Socket error occurred: {e}")
+            close_client_socket(client)
+            client = None
             continue
 
         except Exception as e:
             print(f"\nAn error occurred: {e}\n")
-            if client:
-                try:
-                    client.close()
-                    print("Closed client connection")
-                except Exception as e:
-                    print(f"Error closing client connection: {e}")
+            close_client_socket(client)
             continue
 
-    # if client:
-    #     client.close()
-    # sys.exit(0)
+        finally:
+            # Ensure the client connection is closed
+            close_client_socket(client)
 
     
 def handle_error(client, markets):
