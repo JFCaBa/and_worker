@@ -12,6 +12,8 @@ ws = None
 
 HEARTBEAT_INTERVAL = 30  # seconds
 
+query_delay = 0
+
 async def send_heartbeat(websocket):
     while True:
         try:
@@ -24,7 +26,7 @@ async def send_heartbeat(websocket):
 
 
 async def process_markets(data):
-    global exchange
+    global exchange, query_delay
 
     exchange_class = getattr(ccxt, data['exchange_id'])
     exchange = exchange_class({'enableRateLimit': True})
@@ -53,11 +55,13 @@ async def process_markets(data):
                 if high_price > (open_price * 1.5) and volume > data['next_volume']:
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
-                    
+        
+            await asyncio.sleep(query_delay) 
+
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
-            await asyncio.sleep(10) 
+            query_delay += 0.1
 
     await exchange.close()
 
