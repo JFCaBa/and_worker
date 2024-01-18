@@ -45,6 +45,8 @@ async def process_markets(data):
         except Exception as e:
             print(f"\nError for market {market}: {e}\n")
             error_markets.append(market)
+            await asyncio.sleep(10) 
+            
 
     await exchange.close()
 
