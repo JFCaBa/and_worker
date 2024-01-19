@@ -50,6 +50,7 @@ async def process_data(data):
             logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
             error_markets.append(market)
             query_delay = min(query_delay + 0.1, MAX_QUERY_DELAY)  # Increase delay but cap it
+            await asyncio.sleep(5)
 
 
     await exchange.close()
