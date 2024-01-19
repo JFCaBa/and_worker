@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 exchange = None
 ws = None
 
-query_delay = 0.2
+query_delay = 1
 MAX_QUERY_DELAY = 2.0
 
 async def process_data(data):
@@ -44,7 +44,7 @@ async def process_data(data):
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
         
-            asyncio.sleep(query_delay) 
+            await asyncio.sleep(query_delay) 
 
         except Exception as e:
             logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
