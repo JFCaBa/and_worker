@@ -44,10 +44,10 @@ async def process_data(data):
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
         
-            await asyncio.sleep(query_delay) 
-            
+            asyncio.sleep(query_delay) 
+
         except Exception as e:
-            logging.error(f"\nError for market {market}: {e}\n")
+            logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
             error_markets.append(market)
             query_delay = min(query_delay + 0.1, MAX_QUERY_DELAY)  # Increase delay but cap it
 
