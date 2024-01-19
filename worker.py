@@ -40,7 +40,7 @@ async def process_data(data):
                 
                 # Check if the high price is 1.5 times more than the open price, 
                 # and the volume changed from less than 'prev_volume' to more than 'next_volume'
-                if high_price > (open_price * 1.5) and volume > data['next_volume']:
+                if high_price > (open_price * 1.5):
                     eligible_markets.append(market)
                     print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
         
