@@ -10,22 +10,10 @@ from dotenv import load_dotenv
 exchange = None
 ws = None
 
-HEARTBEAT_INTERVAL = 30  # seconds
+query_delay = 0.2
+MAX_QUERY_DELAY = 2.0
 
-query_delay = 0
-
-async def send_heartbeat(websocket):
-    while True:
-        try:
-            heartbeat_payload = {'type': 'heartbeat'}
-            await websocket.send(json.dumps(heartbeat_payload))
-            await asyncio.sleep(HEARTBEAT_INTERVAL)
-        except Exception as e:
-            logging.error(f'Error sending heartbeat: {e}')
-            break  # Exit the loop if the connection is closed or an error occurs
-
-
-async def process_markets(data):
+async def process_data(data):
     global exchange, query_delay
 
     exchange_class = getattr(ccxt, data['exchange_id'])
@@ -58,10 +46,14 @@ async def process_markets(data):
         
             await asyncio.sleep(query_delay) 
 
-        except Exception as e:
-            print(f"\nError for market {market}: {e}\n")
+        except ccxt.RateLimitExceeded as e:
+            print(f"\nRate limit exceeded for market {market}: {e}\n")
             error_markets.append(market)
-            query_delay += 0.1
+            query_delay = min(query_delay + 0.1, MAX_QUERY_DELAY)  # Increase delay but cap it
+
+        except Exception as e:
+            logging.error(f"\nError for market {market}: {e}\n")
+            error_markets.append(market)
 
     await exchange.close()
 
@@ -75,13 +67,10 @@ async def handle_data(websocket):
     global ws
     ws = websocket
     try:
-        # Start sending heartbeats in a separate task
-        asyncio.create_task(send_heartbeat(websocket))
-        
         while True:  # Keep listening for data
             message = await websocket.recv()
             data = json.loads(message)
-            result = await process_markets(data)
+            result = await process_data(data)
             await send_response(websocket, result)
 
     except websockets.ConnectionClosed as e:
