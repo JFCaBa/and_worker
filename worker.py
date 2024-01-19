@@ -14,6 +14,16 @@ query_delay = 1
 MAX_QUERY_DELAY = 5.0
 
 async def process_data(data):
+
+    if data['task'] == 'process_market_data':
+        return await process_markets(data)
+    elif data['task'] == 'process_orders_book':
+        pass
+    elif data['task'] == 'process_ticker':
+        pass
+    
+
+async def process_markets(data):
     global exchange, query_delay
 
     exchange_class = getattr(ccxt, data['exchange_id'])
