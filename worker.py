@@ -1,5 +1,6 @@
 import json
-import ccxt.pro as ccxt
+import ccxt
+import ccxt.async_support as ccxtpro
 import logging
 import datetime
 import asyncio
@@ -26,8 +27,17 @@ async def process_data(data):
 async def process_markets(data):
     global exchange, query_delay
 
-    exchange_class = getattr(ccxt, data['exchange_id'])
-    exchange = exchange_class({'enableRateLimit': True})
+    # Check if the exchange is supported by ccxt.pro for async operations
+    if hasattr(ccxtpro, data['exchange_id']):
+        exchange_class = getattr(ccxtpro, data['exchange_id'])
+        exchange = exchange_class({'enableRateLimit': True})
+        is_async = True
+    else:
+        # Fallback to ccxt for synchronous operations
+        exchange_class = getattr(ccxt, data['exchange_id'])
+        exchange = exchange_class({'enableRateLimit': True})
+        is_async = False
+
     eligible_markets = []
     error_markets = []
 
@@ -38,9 +48,14 @@ async def process_markets(data):
     for market in data['markets']:
         try:
             print(f"\rProcessing {market}                   ", end='')
-            ohlcv = await exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
-            await exchange.close()
-            
+            if is_async:
+                # Async fetching for ccxt.pro
+                ohlcv = await exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
+            else:
+                # Sync fetching for ccxt (use run_in_executor for non-blocking call)
+                loop = asyncio.get_event_loop()
+                ohlcv = await loop.run_in_executor(None, lambda market=market, since=parsed_time_ago, limit=time_to_check_back: exchange.fetch_ohlcv(market, '1m', since, limit))
+
             for candle in ohlcv:
                 # timestamp = candle[0]
                 open_price = candle[1]  # Open price is the second item in the candle list
@@ -60,10 +75,13 @@ async def process_markets(data):
             logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
             error_markets.append(market)
             query_delay = min(query_delay + 0.1, MAX_QUERY_DELAY)  # Increase delay but cap it
-            await asyncio.sleep(10)
+            await asyncio.sleep(query_delay)
 
-
-    await exchange.close()
+    # Close the exchange properly based on its type
+    if is_async:
+        await exchange.close()
+    else:
+        exchange.close()
 
     return {'eligible_markets': eligible_markets, 'error_markets': error_markets}
 
