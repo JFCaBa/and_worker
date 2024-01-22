@@ -14,6 +14,29 @@ ws = None
 query_delay = 1
 MAX_QUERY_DELAY = 5.0
 
+exchange = None
+
+# New helper function to initialize the exchange
+async def initialize_exchange(data):
+    global exchange
+    if hasattr(ccxtpro, data['exchange_id']):
+        exchange_class = getattr(ccxtpro, data['exchange_id'])
+        exchange = exchange_class({'enableRateLimit': True})
+        return True  # Async supported
+    else:
+        exchange_class = getattr(ccxt, data['exchange_id'])
+        exchange = exchange_class({'enableRateLimit': True})
+        return False  # Async not supported
+
+# New helper function to fetch OHLCV data
+async def fetch_ohlcv_data(market, since, limit, time_units, is_async):
+    if is_async:
+        return await exchange.fetch_ohlcv(market, time_units, since=since, limit=limit)
+    else:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: exchange.fetch_ohlcv(market, time_units, since, limit))
+
+
 async def process_data(data):
 
     if data['task'] == 'process_market_data':
@@ -22,21 +45,65 @@ async def process_data(data):
         pass
     elif data['task'] == 'process_ticker':
         pass
+    elif data['task'] == 'check_pnd_candidates':
+        return await check_pnd_candidates(data)
+    elif data['task'] == 'shutdown':
+        logging.info("\nWorker stopped from master\n")
+        asyncio.run(cleanup())
     
+async def check_pnd_candidates(data):
+    global query_delay
+
+    is_async = await initialize_exchange(data)
+
+    eligible_markets = []
+    error_markets = []
+
+    time_to_check_back = 7
+    time_ago = datetime.datetime.utcnow() - datetime.timedelta(days=time_to_check_back)
+    time_units = "1d"
+    parsed_time_ago = exchange.parse8601(time_ago.isoformat())
+
+    for market in data['markets']:
+        try:
+            print(f"\rProcessing {market}                   ", end='')
+            
+            ohlcv = await fetch_ohlcv_data(market, since=parsed_time_ago, limit=time_to_check_back, time_units=time_units, is_async=is_async)
+             # Process OHLCV data
+            previous_volume = -1  # Start with an invalid volume
+            for candle in ohlcv:
+                open_price = candle[1]  # Open price
+                close_price = candle[4]  # Close price
+                volume = candle[5]  # Volume
+                
+                if (close_price < open_price * 0.1 and
+                    previous_volume == int(data['prev_volume']) and 
+                    volume <= int(data['next_volume']) * 0.1):
+                    eligible_markets.append(market)
+                    print(f"Eligible market: {market} with volume change from {previous_volume} to {volume}")
+                    break  # Stop checking further candles since condition is met
+                previous_volume = volume
+                
+            await asyncio.sleep(query_delay) 
+
+        except Exception as e:
+            logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
+            error_markets.append(market)
+            query_delay = min(query_delay + 0.1, MAX_QUERY_DELAY)  # Increase delay but cap it
+            await asyncio.sleep(query_delay)
+
+    # Close the exchange properly based on its type
+    if is_async:
+        await exchange.close()
+    else:
+        exchange.close()
+
+    return {'eligible_markets': eligible_markets, 'error_markets': error_markets}
+
 
 async def process_markets(data):
-    global exchange, query_delay
-
-    # Check if the exchange is supported by ccxt.pro for async operations
-    if hasattr(ccxtpro, data['exchange_id']):
-        exchange_class = getattr(ccxtpro, data['exchange_id'])
-        exchange = exchange_class({'enableRateLimit': True})
-        is_async = True
-    else:
-        # Fallback to ccxt for synchronous operations
-        exchange_class = getattr(ccxt, data['exchange_id'])
-        exchange = exchange_class({'enableRateLimit': True})
-        is_async = False
+    global query_delay
+    is_async = await initialize_exchange(data)
 
     eligible_markets = []
     error_markets = []
@@ -48,13 +115,8 @@ async def process_markets(data):
     for market in data['markets']:
         try:
             print(f"\rProcessing {market}                   ", end='')
-            if is_async:
-                # Async fetching for ccxt.pro
-                ohlcv = await exchange.fetch_ohlcv(market, '1m', since=parsed_time_ago, limit=time_to_check_back)
-            else:
-                # Sync fetching for ccxt (use run_in_executor for non-blocking call)
-                loop = asyncio.get_event_loop()
-                ohlcv = await loop.run_in_executor(None, lambda market=market, since=parsed_time_ago, limit=time_to_check_back: exchange.fetch_ohlcv(market, '1m', since, limit))
+
+            ohlcv = await fetch_ohlcv_data(market, since=parsed_time_ago, limit=time_to_check_back, time_units='1m', is_async=is_async)
 
             for candle in ohlcv:
                 # timestamp = candle[0]

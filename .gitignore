@@ -6,6 +6,7 @@
 # My files to be excluded
 .env
 venv/*
+.venv/*
 
 # User-specific files
 *.rsuser
