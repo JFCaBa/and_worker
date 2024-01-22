@@ -6,6 +6,7 @@ import datetime
 import asyncio
 import websockets
 import os
+import aiohttp
 from dotenv import load_dotenv
 
 exchange = None
@@ -63,28 +64,48 @@ async def check_pnd_candidates(data):
     time_ago = datetime.datetime.utcnow() - datetime.timedelta(days=time_to_check_back)
     time_units = "1d"
     parsed_time_ago = exchange.parse8601(time_ago.isoformat())
+    coinmarketcup_api_key = data['coinmarketcup_api_key']
+    maximum_markey_cup = data['maximum_market_cup']
 
     for market in data['markets']:
         try:
             print(f"\rProcessing {market}                   ", end='')
             
             ohlcv = await fetch_ohlcv_data(market, since=parsed_time_ago, limit=time_to_check_back, time_units=time_units, is_async=is_async)
-             # Process OHLCV data
-            previous_volume = -1  # Start with an invalid volume
-            for candle in ohlcv:
+            
+            # Initialize variables to store the first and last volume
+            first_volume = None
+            last_volume = None
+
+            for index, candle in enumerate(ohlcv):
                 open_price = candle[1]  # Open price
                 close_price = candle[4]  # Close price
                 volume = candle[5]  # Volume
-                
-                if (close_price < open_price * 0.1 and
-                    previous_volume == int(data['prev_volume']) and 
-                    volume <= int(data['next_volume']) * 0.1):
-                    eligible_markets.append(market)
-                    print(f"Eligible market: {market} with volume change from {previous_volume} to {volume}")
-                    break  # Stop checking further candles since condition is met
-                previous_volume = volume
-                
-            await asyncio.sleep(query_delay) 
+
+                # Capture the first volume
+                if index == 0:
+                    first_volume = volume
+
+                if volume > 1000:
+                    continue
+
+                # Capture the last volume
+                last_volume = volume
+
+            # Ensure that the first and last volumes are valid and calculate the percentage change
+            if first_volume and last_volume:
+                volume_change_percentage = ((last_volume - first_volume) / first_volume) * 100
+
+                # Check if the volume change percentage is greater than 10% and the closing price is less than 10% of the opening price
+                if volume_change_percentage < 10 and close_price > open_price:
+                    if coinmarketcup_api_key:
+                        symbol, quote_currency = market.split('/')
+                        market_cup = await fetch_market_cap(symbol, quote_currency, coinmarketcup_api_key)
+                        if market_cup < maximum_markey_cup:
+                            eligible_markets.append(market)
+                            print(f"\nEligible market: {market} with market cup change {market_cup:.2f}")
+
+            await asyncio.sleep(query_delay)
 
         except Exception as e:
             logging.error(f"\nError for market {market}: {e}, delay: {query_delay}\n")
@@ -167,6 +188,28 @@ async def handle_data(websocket):
 
     except Exception as e:
         print(f"An error occurred while handling data: {e}")
+
+async def fetch_market_cap(symbol: str, quote_currency: str, api_key: str) -> float:
+    url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+    headers = {
+        "X-CMC_PRO_API_KEY": api_key,
+        "Accept": "application/json"
+    }
+    params = {
+        "symbol": symbol,
+        "convert": quote_currency
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                market_cap = data['data'][symbol]['quote']['USD']['market_cap']
+                return market_cap
+            else:
+                # Handle errors (you might want to raise an exception or return None)
+                print(f"Error fetching market cap: {response.status}")
+                return None
 
 async def connect_to_server(uri):
     while True:
