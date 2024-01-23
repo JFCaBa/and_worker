@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+.env
+.venv
+.git
+.dockerignore
+.gitignore
+Dockerfile
+README.md
+LICENSE
+*.md
+multi-workers-launch.sh
+stop-multi-worker.sh
