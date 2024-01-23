@@ -4,6 +4,7 @@ import os
 import time
 import requests
 import json
+import traceback
 
 
 class BluetoothServer:
@@ -97,6 +98,7 @@ class BluetoothServer:
 
         except Exception as e:
             print(f"An error occurred: {e}")
+            traceback.print_exc()  # This will print the detailed traceback
 
         finally:
             if self.client_sock:
