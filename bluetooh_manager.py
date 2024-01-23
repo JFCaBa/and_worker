@@ -1,20 +1,18 @@
-from bluepy import btle
-import json
+import bluetooth
 import subprocess
 import os
 import time
 import requests
+import json
 
 
 class BluetoothServer:
     def __init__(self):
-        self.peripheral = None
+        self.server_sock = None
+        self.client_sock = None
         self.wallet_address = None  # Initialize wallet_address as None
-        adv_data = btle.AdvertisingData()
-        adv_data.setCompleteLocalName("Raspberry Pi")
-        self.peripheral.advertise(adv_data, interval_ms=1000)
+        print("Setting up Bluetooth server")
 
-        print("Waiting for a Bluetooth connection")
 
     def start_docker_container(self):
         # Stop the existing container if it's running
@@ -63,36 +61,46 @@ class BluetoothServer:
     
     def run(self):
         try:
-            self.peripheral = btle.Peripheral()
-            self.peripheral.setDelegate(self)
+            # Create a new server socket using RFCOMM protocol
+            self.server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
 
-            print("Scanning for devices...")
-            scanner = btle.Scanner()
-            devices = scanner.scan(10)  # Scan for 10 seconds (adjust as needed)
+            # Bind to any port
+            self.server_sock.bind(("", bluetooth.PORT_ANY))
+            self.server_sock.listen(1)
 
-            for device in devices:
-                # Check if the device has a name and matches a specific name or MAC address
-                if device.getValueText(btle.ScanEntry.COMPLETE_LOCAL_NAME) == "iPhone" or device.addr == "00:11:22:33:44:55":
-                    print(f"Connecting to {device.addr}...")
-                    self.peripheral.connect(device.addr)
-                    break
+            # Get the port the server socket is listening
+            port = self.server_sock.getsockname()[1]
 
-            while True:
-                if self.wallet_address and self.has_internet_connection():
-                    print("Internet connection available and wallet address received. Starting Docker container.")
-                    self.start_docker_container()
-                    break
-                elif not self.wallet_address:
-                    print("Waiting for wallet address...")
-                elif not self.has_internet_connection():
-                    print("Waiting for internet connection...")
-                time.sleep(5)  # Check every 5 seconds
+            # Set the name of your service
+            service_name = "My Bluetooth Service"
+            service_id = ""  # You can provide a UUID here
 
-        except KeyboardInterrupt:
-            pass
+            # Start advertising the service
+            bluetooth.advertise_service(self.server_sock, service_name,
+                                        service_id=service_id,
+                                        service_classes=[service_id, bluetooth.SERIAL_PORT_CLASS],
+                                        profiles=[bluetooth.SERIAL_PORT_PROFILE])
+
+            print(f"Waiting for connection on RFCOMM channel {port}")
+
+            # Accept incoming connections
+            self.client_sock, client_info = self.server_sock.accept()
+            print(f"Accepted connection from {client_info}")
+
+            # Now you can use self.client_sock to communicate with the connected device
+            # Use self.client_sock.recv(size) to read data and self.client_sock.send(data) to send data
+
+            # ... (handle notifications and other logic)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
         finally:
-            if self.peripheral:
-                self.peripheral.disconnect()
+            if self.client_sock:
+                self.client_sock.close()
+            if self.server_sock:
+                self.server_sock.close()
+            print("Disconnected.")
     
     def handleNotification(self, cHandle, data):
         try:
