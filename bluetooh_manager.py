@@ -52,9 +52,9 @@ class BluetoothServer:
                 self.start_docker_container()
                 break
             elif not self.wallet_address:
-                print("Waiting for wallet address...")
+                print("\rWaiting for wallet address...     ",end='')
             elif not self.has_internet_connection():
-                print("Waiting for internet connection...")
+                print("\rWaiting for internet connection...", end='')
             time.sleep(5)  # Check every 5 seconds
     
     def run(self):
@@ -68,7 +68,7 @@ class BluetoothServer:
 
             for device in devices:
                 # Check if the device has a name and matches a specific name or MAC address
-                if device.getValueText(btle.ScanEntry.COMPLETE_LOCAL_NAME) == "YourDeviceName" or device.addr == "00:11:22:33:44:55":
+                if device.getValueText(btle.ScanEntry.COMPLETE_LOCAL_NAME) == "E8B31A46-D6F0-4E2E-8A6C-0586B2CC831B" or device.addr == "00:11:22:33:44:55":
                     print(f"Connecting to {device.addr}...")
                     self.peripheral.connect(device.addr)
                     break

@@ -10,7 +10,7 @@ COPY . /app
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set fixed URI as an environment variable
+# Set fixed WS_URI as an environment variable
 ENV WS_URI=ws://onedayvpn.com:5001
 
 # Set a placeholder for WALLET_ADDRESS which will be provided at runtime
