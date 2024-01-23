@@ -1,0 +1,4 @@
+ccxt
+ccxtpro
+python-dotenv
+websockets
