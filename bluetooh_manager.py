@@ -71,15 +71,18 @@ class BluetoothServer:
             # Get the port the server socket is listening
             port = self.server_sock.getsockname()[1]
 
-            # Set the name of your service
-            service_name = "My Bluetooth Service"
-            service_id = ""  # You can provide a UUID here
+            # Provide a valid UUID for the service
+            service_id = "00001101-0000-1000-8000-00805F9B34FB"
+            service_name = "My Miner Service"
+            service_classes = [service_id, bluetooth.SERIAL_PORT_CLASS]
+            profiles = [bluetooth.SERIAL_PORT_PROFILE]
 
-            # Start advertising the service
-            bluetooth.advertise_service(self.server_sock, service_name,
-                                        service_id=service_id,
-                                        service_classes=[service_id, bluetooth.SERIAL_PORT_CLASS],
-                                        profiles=[bluetooth.SERIAL_PORT_PROFILE])
+            bluetooth.advertise_service(
+                self.server_sock, service_name,
+                service_id=service_id,
+                service_classes=service_classes,
+                profiles=profiles
+            )
 
             print(f"Waiting for connection on RFCOMM channel {port}")
 
