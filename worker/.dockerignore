@@ -12,3 +12,5 @@ Dockerfile
 README.md
 LICENSE
 *.md
+multi-workers-launch.sh
+stop-multi-worker.sh

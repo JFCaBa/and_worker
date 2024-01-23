@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ENV SOME_VARIABLE some_value
 
 # Run worker.py when the container launches
-CMD ["python", "./worker.py"]
+CMD ["python", "./worker/main.py"]

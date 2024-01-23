@@ -2,3 +2,4 @@ ccxt
 ccxtpro
 python-dotenv
 websockets
+pybluez
