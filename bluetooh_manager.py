@@ -75,7 +75,7 @@ class BluetoothServer:
             # Provide a valid UUID for the service
             service_id = "00001101-0000-1000-8000-00805F9B34FB"
             service_name = "My Miner Service"
-            service_classes = [service_id, bluetooth.SERIAL_PORT_CLASS]
+            service_classes = [service_id, bluetooth.PORT_ANY]
             profiles = [bluetooth.SERIAL_PORT_PROFILE]
 
             bluetooth.advertise_service(
