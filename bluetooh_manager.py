@@ -68,7 +68,7 @@ class BluetoothServer:
 
             for device in devices:
                 # Check if the device has a name and matches a specific name or MAC address
-                if device.getValueText(btle.ScanEntry.COMPLETE_LOCAL_NAME) == "E8B31A46-D6F0-4E2E-8A6C-0586B2CC831B" or device.addr == "00:11:22:33:44:55":
+                if device.getValueText(btle.ScanEntry.COMPLETE_LOCAL_NAME) == "MinerMobileOS" or device.addr == "00:11:22:33:44:55":
                     print(f"Connecting to {device.addr}...")
                     self.peripheral.connect(device.addr)
                     break
