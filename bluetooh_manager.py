@@ -1,4 +1,4 @@
-import bluetooth
+from bluepy import btle
 import json
 import subprocess
 import os
@@ -7,12 +7,9 @@ import requests
 
 class BluetoothServer:
     def __init__(self):
-        self.server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-        self.port = 1
-        self.server_sock.bind(("", self.port))
-        self.server_sock.listen(1)
+        self.peripheral = None
         self.wallet_address = None  # Initialize wallet_address as None
-        print(f"Waiting for a connection on RFCOMM channel {self.port}")
+        print("Waiting for a Bluetooth connection")
 
     def start_docker_container(self):
         # Stop the existing container if it's running
@@ -60,44 +57,61 @@ class BluetoothServer:
             time.sleep(5)  # Check every 5 seconds
     
     def run(self):
-        client_sock, client_info = self.server_sock.accept()
-        print("Accepted connection from ", client_info)
-
         try:
-            data = client_sock.recv(1024)  # Adjust the buffer size if necessary
-            if data:
-                print(f"Received [{data}]")
+            self.peripheral = btle.Peripheral()
+            self.peripheral.setDelegate(self)
 
-                # Parse data as JSON
-                try:
-                    payload = json.loads(data.decode("utf-8"))
-                    hotspot = payload.get("hotspot")
-                    password = payload.get("password")
-                    wallet = payload.get("wallet")
+            print("Scanning for devices...")
+            scanner = btle.Scanner()
+            devices = scanner.scan(10)  # Scan for 10 seconds (adjust as needed)
 
-                    # Update WiFi settings
-                    if hotspot and password:
-                        self.update_wifi_settings(hotspot, password)
-                        print("WiFi settings updated.")
+            for device in devices:
+                # Check if the device has a name and matches a specific name or MAC address
+                if device.getValueText(btle.ScanEntry.COMPLETE_NAME) == "YourDeviceName" or device.addr == "00:11:22:33:44:55":
+                    print(f"Connecting to {device.addr}...")
+                    self.peripheral.connect(device.addr)
+                    break
 
-                    # Cache wallet address
-                    if wallet:
-                        self.wallet_address = wallet
-                        print(f"Cached wallet address: {self.wallet_address}")
+            while True:
+                if self.wallet_address and self.has_internet_connection():
+                    print("Internet connection available and wallet address received. Starting Docker container.")
+                    self.start_docker_container()
+                    break
+                elif not self.wallet_address:
+                    print("Waiting for wallet address...")
+                elif not self.has_internet_connection():
+                    print("Waiting for internet connection...")
+                time.sleep(5)  # Check every 5 seconds
 
-                    # Check conditions and act accordingly
-                    self.wait_for_conditions()
-
-                except json.JSONDecodeError as e:
-                    print(f"An error occurred: {e.msg}")
-        except OSError:
+        except KeyboardInterrupt:
             pass
+        finally:
+            if self.peripheral:
+                self.peripheral.disconnect()
+    
+    def handleNotification(self, cHandle, data):
+        try:
+            data_str = data.decode("utf-8")
+            print(f"Received [{data_str}]")
 
-        print("Disconnected.")
-        client_sock.close()
+            # Parse data as JSON
+            payload = json.loads(data_str)
+            hotspot = payload.get("hotspot")
+            password = payload.get("password")
+            wallet = payload.get("wallet")
 
-    def __del__(self):
-        self.server_sock.close()
+            # Update WiFi settings
+            if hotspot and password:
+                self.update_wifi_settings(hotspot, password)
+                print("WiFi settings updated.")
+
+            # Cache wallet address
+            if wallet:
+                self.wallet_address = wallet
+                print(f"Cached wallet address: {self.wallet_address}")
+
+        except json.JSONDecodeError as e:
+            print(f"An error occurred: {e.msg}")
 
 if __name__ == "__main__":
     server = BluetoothServer()
