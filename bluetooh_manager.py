@@ -1,9 +1,10 @@
-from bluepy.btle import Scanner, DefaultDelegate, ScanEntry
+from bluepy import btle
 import json
 import subprocess
 import os
 import time
 import requests
+
 
 class BluetoothServer:
     def __init__(self):
