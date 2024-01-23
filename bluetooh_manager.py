@@ -10,6 +10,10 @@ class BluetoothServer:
     def __init__(self):
         self.peripheral = None
         self.wallet_address = None  # Initialize wallet_address as None
+        adv_data = btle.AdvertisingData()
+        adv_data.setCompleteLocalName("Raspberry Pi")
+        self.peripheral.advertise(adv_data, interval_ms=1000)
+
         print("Waiting for a Bluetooth connection")
 
     def start_docker_container(self):
