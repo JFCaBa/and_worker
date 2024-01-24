@@ -23,13 +23,13 @@ class MarketProcessor:
 
                 for candle in ohlcv:
                     open_price = candle[1]  # Open price is the second item in the candle list
-                    high_price = candle[2]  # High price is the third item in the candle list
+                    close_price = candle[4]  # High price is the third item in the candle list
                     volume = candle[5]  # Volume is the sixth item in the candle list
                     
                     # Check if the high price is 1.5 times more than the open price
-                    if high_price > (open_price * 1.5):
+                    if close_price > (open_price * 1.5):
                         eligible_markets.append(market)
-                        print(f"\nEligible market: {market} with open price: {open_price}, high price: {high_price}, volume: {volume}\n")
+                        print(f"\nEligible market: {market} with open price: {open_price}, high price: {close_price}, volume: {volume}\n")
             
                 await asyncio.sleep(settings.QUERY_DELAY) 
 
